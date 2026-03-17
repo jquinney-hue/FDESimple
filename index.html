@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fetch-Decode-Execute Cycle | OCR J277</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --panel: #0f1628;
+    --border: #1e2d4a;
+    --dim: #1a2540;
+    --text: #c8d8f0;
+    --muted: #4a6080;
+    --accent: #00d4ff;
+    --fetch: #00d4ff;
+    --decode: #a855f7;
+    --execute: #f97316;
+    --glow-fetch: 0 0 20px #00d4ff88, 0 0 40px #00d4ff44;
+    --glow-decode: 0 0 20px #a855f788, 0 0 40px #a855f744;
+    --glow-execute: 0 0 20px #f9731688, 0 0 40px #f9731644;
+    --active-border: 2px solid;
+    --grid: #ffffff08;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #e8f4ff;
+  }
+  header p {
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin-top: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── STAGE BADGE ── */
+  #stage-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 22px;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    border: 1px solid transparent;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+    background: var(--dim);
+    color: var(--muted);
+  }
+  #stage-badge.fetch  { background: #00d4ff18; border-color: var(--fetch);  color: var(--fetch);  box-shadow: var(--glow-fetch); }
+  #stage-badge.decode { background: #a855f718; border-color: var(--decode); color: var(--decode); box-shadow: var(--glow-decode); }
+  #stage-badge.execute{ background: #f9731618; border-color: var(--execute);color: var(--execute);box-shadow: var(--glow-execute); }
+  #stage-badge .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.2s infinite;
+  }
+  #stage-badge.idle .dot { animation: none; background: var(--muted); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
+
+  /* ── MAIN DIAGRAM ── */
+  .diagram {
+    display: grid;
+    grid-template-columns: 200px 1fr 200px;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    width: 100%;
+    max-width: 860px;
+    align-items: start;
+  }
+
+  /* ── COMPONENT BOXES ── */
+  .comp {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 12px 12px;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+    position: relative;
+  }
+  .comp .comp-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .comp .comp-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #b0c8e8;
+    margin-bottom: 6px;
+  }
+  .comp .comp-abbr {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .comp .reg-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.9rem;
+    color: var(--muted);
+    background: var(--dim);
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin-top: 6px;
+    display: block;
+    min-height: 28px;
+    transition: color 0.3s, background 0.3s;
+  }
+
+  /* Active states per phase */
+  .comp.active-fetch  { border-color: var(--fetch);  box-shadow: var(--glow-fetch);  background: #00d4ff0a; }
+  .comp.active-decode { border-color: var(--decode); box-shadow: var(--glow-decode); background: #a855f70a; }
+  .comp.active-execute{ border-color: var(--execute);box-shadow: var(--glow-execute);background: #f973160a; }
+
+  .comp.active-fetch  .reg-val { color: var(--fetch);  background: #00d4ff18; }
+  .comp.active-decode .reg-val { color: var(--decode); background: #a855f718; }
+  .comp.active-execute .reg-val{ color: var(--execute);background: #f9731618; }
+
+  /* ── CPU BOX ── */
+  .cpu-box {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .cpu-title {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+    margin-bottom: 4px;
+  }
+
+  .cpu-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .cpu-unit {
+    background: var(--dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+  .cpu-unit .u-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .cpu-unit .u-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #90b0d0;
+  }
+  .cpu-unit .u-abbr {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .cpu-unit.active-fetch  { border-color: var(--fetch);  box-shadow: var(--glow-fetch);  background: #00d4ff0d; }
+  .cpu-unit.active-decode { border-color: var(--decode); box-shadow: var(--glow-decode); background: #a855f70d; }
+  .cpu-unit.active-execute{ border-color: var(--execute);box-shadow: var(--glow-execute);background: #f973160d; }
+
+  /* Registers row inside CPU */
+  .regs-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .reg-box {
+    background: var(--dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+  .reg-box .r-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .reg-box .r-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #90b0d0;
+  }
+  .reg-box .r-abbr {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+  .reg-box .r-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 4px;
+    transition: color 0.3s;
+  }
+
+  .reg-box.active-fetch  { border-color: var(--fetch);  box-shadow: 0 0 12px #00d4ff55; background: #00d4ff0d; }
+  .reg-box.active-decode { border-color: var(--decode); box-shadow: 0 0 12px #a855f755; background: #a855f70d; }
+  .reg-box.active-execute{ border-color: var(--execute);box-shadow: 0 0 12px #f9731655; background: #f973160d; }
+
+  .reg-box.active-fetch  .r-val { color: var(--fetch); }
+  .reg-box.active-decode .r-val { color: var(--decode); }
+  .reg-box.active-execute .r-val{ color: var(--execute); }
+
+  /* ── BUS ── */
+  .bus-area {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    position: relative;
+    margin: 0 0 4px;
+  }
+  .bus-line {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 3px;
+    background: var(--border);
+    transform: translateY(-50%);
+    border-radius: 2px;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .bus-line.active-fetch  { background: var(--fetch);  box-shadow: 0 0 10px #00d4ff88; }
+  .bus-line.active-decode { background: var(--decode); box-shadow: 0 0 10px #a855f788; }
+  .bus-line.active-execute{ background: var(--execute);box-shadow: 0 0 10px #f9731688; }
+  .bus-label {
+    position: relative;
+    z-index: 2;
+    background: var(--bg);
+    padding: 2px 12px;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    transition: color 0.3s, border-color 0.3s;
+  }
+  .bus-line.active-fetch  ~ .bus-label,
+  .bus-area.active-fetch  .bus-label { color: var(--fetch);  border-color: var(--fetch); }
+  .bus-area .bus-label { transition: color 0.3s, border-color 0.3s; }
+
+  /* ── DATA PACKET ANIMATION ── */
+  .packet {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .packet.fly {
+    animation: flyPacket 0.7s ease-in-out forwards;
+  }
+  @keyframes flyPacket {
+    0%   { opacity: 0; transform: translateY(-50%) scale(0.4); }
+    20%  { opacity: 1; transform: translateY(-50%) scale(1); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-50%) scale(0.4); }
+  }
+
+  /* ── MAIN MEMORY (left) ── */
+  .memory-col {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ── ALU (right) ── */
+  .alu-col {
+    grid-column: 3;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ── EXPLANATION BOX ── */
+  #explanation {
+    width: 100%;
+    max-width: 860px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    min-height: 90px;
+    transition: border-color 0.3s;
+  }
+  #explanation.fetch  { border-color: var(--fetch); }
+  #explanation.decode { border-color: var(--decode); }
+  #explanation.execute{ border-color: var(--execute); }
+
+  #explanation .ex-phase {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  #explanation.fetch   .ex-phase { color: var(--fetch); }
+  #explanation.decode  .ex-phase { color: var(--decode); }
+  #explanation.execute .ex-phase { color: var(--execute); }
+
+  #explanation .ex-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #e0eeff;
+    margin-bottom: 6px;
+  }
+  #explanation .ex-text {
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.55;
+  }
+  #explanation .ex-highlight {
+    font-weight: 700;
+    color: #e0eeff;
+  }
+
+  /* ── STEP COUNTER ── */
+  .step-counter {
+    display: flex;
+    gap: 6px;
+    margin-top: 14px;
+    margin-bottom: 2px;
+  }
+  .step-dot {
+    width: 28px; height: 5px;
+    border-radius: 3px;
+    background: var(--dim);
+    border: 1px solid var(--border);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .step-dot.done-fetch   { background: var(--fetch);  border-color: var(--fetch); }
+  .step-dot.done-decode  { background: var(--decode); border-color: var(--decode); }
+  .step-dot.done-execute { background: var(--execute);border-color: var(--execute); }
+
+  /* ── CONTROLS ── */
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 10px 26px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--dim);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+  button:hover { background: var(--panel); color: var(--text); border-color: #3a5070; }
+
+  #btn-next {
+    background: #00d4ff18;
+    border-color: var(--fetch);
+    color: var(--fetch);
+  }
+  #btn-next:hover { background: #00d4ff30; }
+  #btn-next.phase-decode  { background: #a855f718; border-color: var(--decode); color: var(--decode); }
+  #btn-next.phase-decode:hover  { background: #a855f730; }
+  #btn-next.phase-execute { background: #f9731618; border-color: var(--execute); color: var(--execute); }
+  #btn-next.phase-execute:hover { background: #f9731630; }
+  #btn-next.phase-done    { background: var(--dim); border-color: var(--border); color: var(--muted); }
+
+  #btn-reset { border-color: var(--border); }
+
+  .cycle-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    align-self: center;
+  }
+
+  /* responsive */
+  @media (max-width: 640px) {
+    .diagram { grid-template-columns: 1fr; grid-template-rows: auto; }
+    .cpu-box { grid-column: 1; grid-row: 3; }
+    .memory-col { grid-column: 1; grid-row: 1; }
+    .alu-col { grid-column: 1; grid-row: 2; }
+    .bus-area { grid-column: 1; grid-row: 4; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fetch–Decode–Execute Cycle</h1>
+  <p>OCR GCSE Computer Science · J277 · Component 01</p>
+</header>
+
+<div id="stage-badge" class="idle"><span class="dot"></span><span id="badge-text">Press Next Step to begin</span></div>
+
+<div class="step-counter" id="step-dots">
+  <div class="step-dot" id="dot-0"></div>
+  <div class="step-dot" id="dot-1"></div>
+  <div class="step-dot" id="dot-2"></div>
+  <div class="step-dot" id="dot-3"></div>
+  <div class="step-dot" id="dot-4"></div>
+  <div class="step-dot" id="dot-5"></div>
+</div>
+
+<div class="diagram" id="diagram">
+
+  <!-- LEFT: Main Memory -->
+  <div class="memory-col">
+    <div class="comp" id="comp-mem">
+      <div class="comp-label">Storage</div>
+      <div class="comp-title">Main Memory</div>
+      <div class="comp-abbr">RAM</div>
+      <span class="reg-val" id="val-mem">— — —</span>
+    </div>
+    <div class="comp" id="comp-mar">
+      <div class="comp-label">Register</div>
+      <div class="comp-title">Memory Address Register</div>
+      <div class="comp-abbr">MAR</div>
+      <span class="reg-val" id="val-mar">— — —</span>
+    </div>
+    <div class="comp" id="comp-mdr">
+      <div class="comp-label">Register</div>
+      <div class="comp-title">Memory Data Register</div>
+      <div class="comp-abbr">MDR</div>
+      <span class="reg-val" id="val-mdr">— — —</span>
+    </div>
+  </div>
+
+  <!-- CENTRE: CPU -->
+  <div class="cpu-box" id="cpu-box">
+    <div class="cpu-title">Central Processing Unit (CPU)</div>
+
+    <div class="cpu-inner">
+      <div class="cpu-unit" id="unit-cu">
+        <div class="u-label">Unit</div>
+        <div class="u-name">Control Unit</div>
+        <div class="u-abbr">CU</div>
+      </div>
+      <div class="cpu-unit" id="unit-alu">
+        <div class="u-label">Unit</div>
+        <div class="u-name">Arithmetic Logic Unit</div>
+        <div class="u-abbr">ALU</div>
+      </div>
+    </div>
+
+    <div class="regs-row">
+      <div class="reg-box" id="reg-pc">
+        <div class="r-label">Register</div>
+        <div class="r-name">Program Counter</div>
+        <div class="r-abbr">PC</div>
+        <div class="r-val" id="val-pc">0x0001</div>
+      </div>
+      <div class="reg-box" id="reg-acc">
+        <div class="r-label">Register</div>
+        <div class="r-name">Accumulator</div>
+        <div class="r-abbr">ACC</div>
+        <div class="r-val" id="val-acc">—</div>
+      </div>
+      <div class="reg-box" id="reg-cir">
+        <div class="r-label">Register</div>
+        <div class="r-name">Current Instruction Register</div>
+        <div class="r-abbr">CIR</div>
+        <div class="r-val" id="val-cir">—</div>
+      </div>
+      <div class="reg-box" id="reg-gp">
+        <div class="r-label">Registers</div>
+        <div class="r-name">General Purpose</div>
+        <div class="r-abbr">R0–R7</div>
+        <div class="r-val" id="val-gp">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: ALU side info -->
+  <div class="alu-col">
+    <div class="comp" id="comp-clock">
+      <div class="comp-label">Component</div>
+      <div class="comp-title">System Clock</div>
+      <div class="comp-abbr">Controls timing</div>
+      <span class="reg-val" id="val-clock">Idle</span>
+    </div>
+    <div class="comp" id="comp-cache">
+      <div class="comp-label">Memory</div>
+      <div class="comp-title">Cache</div>
+      <div class="comp-abbr">L1 / L2</div>
+      <span class="reg-val" id="val-cache">—</span>
+    </div>
+  </div>
+
+  <!-- BUS ROW -->
+  <div class="bus-area" id="bus-area">
+    <div class="bus-line" id="bus-line"></div>
+    <div class="bus-label" id="bus-label">System Bus (Address · Data · Control)</div>
+  </div>
+
+</div>
+
+<!-- Explanation -->
+<div id="explanation">
+  <div class="ex-phase" id="ex-phase">Overview</div>
+  <div class="ex-title" id="ex-title">The Fetch–Decode–Execute Cycle</div>
+  <div class="ex-text" id="ex-text">The CPU continuously repeats three stages to run a program. Press <strong>Next Step</strong> to walk through each stage and see which components are used.</div>
+</div>
+
+<div class="controls">
+  <button id="btn-reset" onclick="reset()">↺ Reset</button>
+  <button id="btn-next" onclick="nextStep()">Next Step →</button>
+  <span class="cycle-badge" id="cycle-label">Cycle 1</span>
+</div>
+
+<script>
+const STEPS = [
+  // FETCH — 3 sub-steps
+  {
+    phase: 'fetch',
+    badge: 'FETCH',
+    title: 'Fetch — Step 1 of 3: PC → MAR',
+    phaseLabel: 'FETCH STAGE',
+    text: 'The <span class="ex-highlight">Program Counter (PC)</span> holds the memory address of the next instruction. Its value is copied into the <span class="ex-highlight">Memory Address Register (MAR)</span> so the CPU knows where to look in RAM.',
+    active: { comps: ['comp-mar'], regs: ['reg-pc'], units: [] },
+    vals: { 'val-pc': '0x0001', 'val-mar': '0x0001' },
+    bus: 'fetch',
+    dot: 0
+  },
+  {
+    phase: 'fetch',
+    badge: 'FETCH',
+    title: 'Fetch — Step 2 of 3: RAM → MDR',
+    phaseLabel: 'FETCH STAGE',
+    text: 'The <span class="ex-highlight">Control Unit (CU)</span> sends a read signal along the <span class="ex-highlight">control bus</span>. The instruction stored at address 0x0001 in <span class="ex-highlight">Main Memory (RAM)</span> travels along the <span class="ex-highlight">data bus</span> into the <span class="ex-highlight">Memory Data Register (MDR)</span>.',
+    active: { comps: ['comp-mem', 'comp-mdr'], regs: [], units: ['unit-cu'] },
+    vals: { 'val-mem': 'ADD R1, R2', 'val-mdr': 'ADD R1, R2' },
+    bus: 'fetch',
+    dot: 0
+  },
+  {
+    phase: 'fetch',
+    badge: 'FETCH',
+    title: 'Fetch — Step 3 of 3: MDR → CIR, PC increments',
+    phaseLabel: 'FETCH STAGE',
+    text: 'The instruction is copied from the MDR into the <span class="ex-highlight">Current Instruction Register (CIR)</span>, keeping it safe while it is processed. The <span class="ex-highlight">PC is incremented</span> (0x0001 → 0x0002) so the CPU knows the address of the <em>next</em> instruction ready for the following cycle.',
+    active: { comps: [], regs: ['reg-cir', 'reg-pc'], units: [] },
+    vals: { 'val-cir': 'ADD R1, R2', 'val-pc': '0x0002', 'val-mdr': 'ADD R1, R2' },
+    bus: 'fetch',
+    dot: 1
+  },
+
+  // DECODE — 1 sub-step
+  {
+    phase: 'decode',
+    badge: 'DECODE',
+    title: 'Decode — The CU interprets the instruction',
+    phaseLabel: 'DECODE STAGE',
+    text: 'The <span class="ex-highlight">Control Unit (CU)</span> reads the instruction held in the CIR (<code>ADD R1, R2</code>) and decodes it. It identifies the <span class="ex-highlight">opcode</span> (ADD = perform addition) and the <span class="ex-highlight">operands</span> (R1, R2 = which registers to use). The CU then prepares the correct signals to carry out the instruction.',
+    active: { comps: [], regs: ['reg-cir'], units: ['unit-cu'] },
+    vals: { 'val-cir': 'ADD R1, R2' },
+    bus: 'decode',
+    dot: 3
+  },
+
+  // EXECUTE — 2 sub-steps
+  {
+    phase: 'execute',
+    badge: 'EXECUTE',
+    title: 'Execute — Step 1 of 2: ALU performs operation',
+    phaseLabel: 'EXECUTE STAGE',
+    text: 'For arithmetic instructions, the <span class="ex-highlight">Arithmetic Logic Unit (ALU)</span> carries out the calculation. Here it adds the values in registers R1 and R2. The result is written into the <span class="ex-highlight">Accumulator (ACC)</span>, a special register that temporarily holds the output.',
+    active: { comps: [], regs: ['reg-acc', 'reg-gp'], units: ['unit-alu'] },
+    vals: { 'val-acc': '42', 'val-gp': 'R1=17  R2=25' },
+    bus: 'execute',
+    dot: 4
+  },
+  {
+    phase: 'execute',
+    badge: 'EXECUTE',
+    title: 'Execute — Step 2 of 2: Result stored / cycle repeats',
+    phaseLabel: 'EXECUTE STAGE',
+    text: 'The result may be <span class="ex-highlight">written back</span> to a register or to memory. The cycle is now complete. The <span class="ex-highlight">PC already points</span> to the next instruction (0x0002), so the CPU immediately begins a new Fetch stage — this loop continues millions of times per second.',
+    active: { comps: ['comp-mem', 'comp-cache'], regs: ['reg-acc'], units: ['unit-cu'] },
+    vals: { 'val-acc': '42', 'val-cache': 'Result cached' },
+    bus: 'execute',
+    dot: 5
+  }
+];
+
+let currentStep = -1;
+let cycleCount = 1;
+
+const phaseColors = { fetch: 'fetch', decode: 'decode', execute: 'execute' };
+const dotPhases = ['fetch','fetch','fetch','decode','execute','execute'];
+
+const allComps = ['comp-mem','comp-mar','comp-mdr','comp-clock','comp-cache'];
+const allRegs  = ['reg-pc','reg-acc','reg-cir','reg-gp'];
+const allUnits = ['unit-cu','unit-alu'];
+
+function clearAll() {
+  [...allComps,...allRegs,...allUnits].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = el.className.replace(/active-\w+/g,'').trim();
+  });
+  const busLine = document.getElementById('bus-line');
+  busLine.className = 'bus-line';
+  const busArea = document.getElementById('bus-area');
+  busArea.className = 'bus-area';
+}
+
+function applyStep(s) {
+  clearAll();
+  const p = s.phase;
+
+  s.active.comps.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active-' + p);
+  });
+  s.active.regs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active-' + p);
+  });
+  s.active.units.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active-' + p);
+  });
+
+  // values
+  if (s.vals) {
+    Object.entries(s.vals).forEach(([id, v]) => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = v; }
+    });
+  }
+
+  // bus
+  document.getElementById('bus-line').classList.add('active-' + s.bus);
+
+  // badge
+  const badge = document.getElementById('stage-badge');
+  badge.className = s.phase;
+  document.getElementById('badge-text').textContent = s.badge;
+
+  // explanation
+  const ex = document.getElementById('explanation');
+  ex.className = s.phase;
+  document.getElementById('ex-phase').textContent = s.phaseLabel;
+  document.getElementById('ex-title').textContent = s.title;
+  document.getElementById('ex-text').innerHTML = s.text;
+
+  // dots
+  for (let i = 0; i < 6; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.className = 'step-dot';
+    if (i <= s.dot) {
+      dot.classList.add('done-' + dotPhases[i]);
+    }
+  }
+
+  // next button colour
+  const btn = document.getElementById('btn-next');
+  btn.className = 'phase-' + s.phase;
+  if (currentStep >= STEPS.length - 1) {
+    btn.className = 'phase-done';
+    btn.textContent = 'Cycle Complete ✓';
+  } else {
+    btn.textContent = 'Next Step →';
+  }
+}
+
+function nextStep() {
+  if (currentStep >= STEPS.length - 1) {
+    // start new cycle
+    cycleCount++;
+    document.getElementById('cycle-label').textContent = 'Cycle ' + cycleCount;
+    reset(true);
+    return;
+  }
+  currentStep++;
+  applyStep(STEPS[currentStep]);
+  if (currentStep >= STEPS.length - 1) {
+    document.getElementById('btn-next').textContent = 'New Cycle →';
+    document.getElementById('btn-next').className = 'phase-done';
+  }
+}
+
+function reset(keepCycle) {
+  currentStep = -1;
+  if (!keepCycle) { cycleCount = 1; document.getElementById('cycle-label').textContent = 'Cycle 1'; }
+  clearAll();
+
+  // reset values
+  const defaults = {
+    'val-pc':'0x0001','val-mar':'— — —','val-mdr':'— — —',
+    'val-cir':'—','val-acc':'—','val-gp':'—',
+    'val-mem':'— — —','val-clock':'Idle','val-cache':'—'
+  };
+  Object.entries(defaults).forEach(([id,v]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  });
+
+  document.getElementById('stage-badge').className = 'idle';
+  document.getElementById('badge-text').textContent = keepCycle ? 'Press Next Step to begin' : 'Press Next Step to begin';
+
+  const ex = document.getElementById('explanation');
+  ex.className = '';
+  document.getElementById('ex-phase').textContent = 'Overview';
+  document.getElementById('ex-title').textContent = 'The Fetch–Decode–Execute Cycle';
+  document.getElementById('ex-text').innerHTML = 'The CPU continuously repeats three stages to run a program. Press <strong>Next Step</strong> to walk through each stage and see which components are used.';
+
+  for (let i = 0; i < 6; i++) {
+    document.getElementById('dot-' + i).className = 'step-dot';
+  }
+
+  const btn = document.getElementById('btn-next');
+  btn.className = '';
+  btn.textContent = 'Next Step →';
+  document.getElementById('bus-line').className = 'bus-line';
+}
+</script>
+</body>
+</html>
